@@ -1,0 +1,26 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    color: #1f2937;
+    background: #f3f4f6;
+    font-family: Arial, sans-serif;
+}
+
+.page {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 96px 24px;
+    text-align: center;
+}
+
+h1 {
+    margin-bottom: 16px;
+    font-size: 32px;
+}
+
+p {
+    color: #6b7280;
+}
