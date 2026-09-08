@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ activity.title }} - 校园活动管理系统 V1.0</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <main class="page form-page">
+        <h1>{{ activity.title }}</h1>
+        <section class="detail-panel">
+            <p><strong>活动说明：</strong>{{ activity.description }}</p>
+            <p><strong>发布教师：</strong>{{ activity.organizer_name }}</p>
+            <p><strong>人数上限：</strong>{{ activity.max_participants }}</p>
+            <p><strong>当前报名人数：</strong>{{ activity.registration_count }}</p>
+            <p><strong>结束时间：</strong>{{ activity.end_time }}</p>
+            <p><strong>活动状态：</strong>{{ activity.display_status }}</p>
+        </section>
+        <p><a href="{{ url_for('activities') }}">返回活动列表</a></p>
+    </main>
+</body>
+</html>

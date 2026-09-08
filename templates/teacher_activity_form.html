@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% if activity %}修改活动{% else %}创建活动{% endif %} - 校园活动管理系统 V1.0</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <main class="page form-page">
+        <h1>{% if activity %}修改活动{% else %}创建活动{% endif %}</h1>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+                <p class="message {{ category }}">{{ message }}</p>
+            {% endfor %}
+        {% endwith %}
+        <form method="post" class="auth-form">
+            <label for="title">活动名称</label>
+            <input id="title" name="title" type="text" required value="{{ activity.title if activity else '' }}">
+            <label for="description">活动说明</label>
+            <textarea id="description" name="description" rows="5" required>{{ activity.description if activity else '' }}</textarea>
+            <label for="max_participants">人数上限</label>
+            <input id="max_participants" name="max_participants" type="number" min="1" required value="{{ activity.max_participants if activity else '' }}">
+            <label for="end_time">结束时间</label>
+            <input id="end_time" name="end_time" type="datetime-local" required value="{{ activity.end_time if activity else '' }}">
+            <button type="submit" class="button">保存</button>
+        </form>
+        <p><a href="{{ url_for('teacher_activities') }}">返回我的活动</a></p>
+    </main>
+</body>
+</html>

@@ -13,6 +13,13 @@
             <p>当前用户名：{{ user.get("username") }}</p>
             <p>当前角色：{% if user.get("role") == "student" %}学生{% elif user.get("role") == "teacher" %}活动组织教师{% else %}未知{% endif %}</p>
         </section>
+        <nav class="actions">
+            {% if user.get("role") == "teacher" %}
+                <a class="button" href="{{ url_for('teacher_activities') }}">我的活动</a>
+            {% else %}
+                <a class="button" href="{{ url_for('activities') }}">查看活动</a>
+            {% endif %}
+        </nav>
         <a class="button" href="{{ url_for('logout') }}">登出</a>
     </main>
 </body>

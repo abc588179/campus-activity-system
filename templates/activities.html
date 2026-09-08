@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>活动列表 - 校园活动管理系统 V1.0</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <main class="page wide-page">
+        <div class="page-header">
+            <div>
+                <h1>活动列表</h1>
+                <p>浏览校园活动信息。</p>
+            </div>
+            <a class="button secondary" href="{{ url_for('dashboard') }}">返回基础页面</a>
+        </div>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+                <p class="message {{ category }}">{{ message }}</p>
+            {% endfor %}
+        {% endwith %}
+        {% if activities %}
+            <div class="activity-list">
+                {% for activity in activities %}
+                    <article class="activity-card">
+                        <h2>{{ activity.title }}</h2>
+                        <p>{{ activity.description }}</p>
+                        <p>发布教师：{{ activity.organizer_name }}</p>
+                        <p>人数上限：{{ activity.max_participants }}　当前报名人数：{{ activity.registration_count }}</p>
+                        <p>结束时间：{{ activity.end_time }}　状态：{{ activity.display_status }}</p>
+                        <a class="button" href="{{ url_for('activity_detail', activity_id=activity.id) }}">查看详情</a>
+                    </article>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="empty-state">暂时没有活动。</p>
+        {% endif %}
+    </main>
+</body>
+</html>

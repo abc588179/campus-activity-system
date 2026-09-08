@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的活动 - 校园活动管理系统 V1.0</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <main class="page wide-page">
+        <div class="page-header">
+            <div>
+                <h1>我的活动</h1>
+                <p>管理当前教师发布的活动。</p>
+            </div>
+            <a class="button" href="{{ url_for('teacher_activities') }}?create=1">创建活动</a>
+        </div>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+                <p class="message {{ category }}">{{ message }}</p>
+            {% endfor %}
+        {% endwith %}
+        {% if activities %}
+            <div class="activity-list">
+                {% for activity in activities %}
+                    <article class="activity-card">
+                        <h2>{{ activity.title }}</h2>
+                        <p>{{ activity.description }}</p>
+                        <p>人数上限：{{ activity.max_participants }}　当前报名人数：{{ activity.registration_count }}</p>
+                        <p>结束时间：{{ activity.end_time }}　状态：{{ activity.display_status }}</p>
+                        <div class="card-actions">
+                            <a class="button secondary" href="{{ url_for('edit_activity', activity_id=activity.id) }}">修改</a>
+                            {% if activity.status == 'open' and activity.display_status == '进行中' %}
+                                <form method="post" action="{{ url_for('close_activity', activity_id=activity.id) }}">
+                                    <button class="button danger" type="submit">关闭活动</button>
+                                </form>
+                            {% endif %}
+                        </div>
+                    </article>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="empty-state">暂时还没有创建活动。</p>
+        {% endif %}
+        <p><a href="{{ url_for('dashboard') }}">返回基础页面</a> | <a href="{{ url_for('logout') }}">登出</a></p>
+    </main>
+</body>
+</html>
