@@ -9,7 +9,21 @@
 <body>
     <main class="page">
         <h1>校园活动管理系统 V1.0</h1>
-        <p>项目基础骨架已创建。</p>
+        <p>当前阶段已完成用户认证基础功能。</p>
+        <nav class="actions">
+            {% if session.get("user_id") %}
+                <a class="button" href="{{ url_for('dashboard') }}">进入基础页面</a>
+                <a class="button secondary" href="{{ url_for('logout') }}">登出</a>
+            {% else %}
+                <a class="button" href="{{ url_for('login') }}">登录</a>
+                <a class="button secondary" href="{{ url_for('register') }}">学生注册</a>
+            {% endif %}
+        </nav>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+                <p class="message {{ category }}">{{ message }}</p>
+            {% endfor %}
+        {% endwith %}
     </main>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>

@@ -1,5 +1,8 @@
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
+
+from werkzeug.security import generate_password_hash
 
 
 SCHEMA = """
@@ -33,22 +36,46 @@ CREATE TABLE IF NOT EXISTS Registration (
 );
 """
 
+TEST_TEACHER_USERNAME = "teacher"
+TEST_TEACHER_PASSWORD = "teacher123"
 
-def get_connection(database_path: str | Path) -> sqlite3.Connection:
-    """Open a SQLite connection with foreign-key checks enabled."""
+
+@contextmanager
+def get_connection(database_path: str | Path):
+    """Open and safely close a SQLite connection."""
     connection = sqlite3.connect(database_path)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
-    return connection
+    try:
+        yield connection
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 
 def init_db(database_path: str | Path) -> None:
-    """Create the V1.0 database and its three core tables if needed."""
+    """Create the V1.0 database and seed the local teacher test account."""
     database_path = Path(database_path)
     database_path.parent.mkdir(parents=True, exist_ok=True)
 
     with get_connection(database_path) as connection:
         connection.executescript(SCHEMA)
+        teacher = connection.execute(
+            "SELECT id FROM User WHERE username = ?",
+            (TEST_TEACHER_USERNAME,),
+        ).fetchone()
+        if teacher is None:
+            connection.execute(
+                "INSERT INTO User (username, password, role) VALUES (?, ?, ?)",
+                (
+                    TEST_TEACHER_USERNAME,
+                    generate_password_hash(TEST_TEACHER_PASSWORD),
+                    "teacher",
+                ),
+            )
 
 
 if __name__ == "__main__":

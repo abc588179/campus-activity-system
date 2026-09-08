@@ -16,6 +16,10 @@ body {
     text-align: center;
 }
 
+.form-page {
+    max-width: 420px;
+}
+
 h1 {
     margin-bottom: 16px;
     font-size: 32px;
@@ -23,4 +27,69 @@ h1 {
 
 p {
     color: #6b7280;
+}
+
+.actions {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 28px;
+}
+
+.button {
+    display: inline-block;
+    padding: 10px 18px;
+    color: #ffffff;
+    background: #2563eb;
+    border: 0;
+    border-radius: 4px;
+    text-decoration: none;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+.button.secondary {
+    color: #1f2937;
+    background: #e5e7eb;
+}
+
+.auth-form {
+    display: grid;
+    gap: 10px;
+    margin: 28px 0 20px;
+    text-align: left;
+}
+
+.auth-form input {
+    padding: 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    font-size: 16px;
+}
+
+.auth-form .button {
+    margin-top: 8px;
+}
+
+.message {
+    padding: 10px;
+    border-radius: 4px;
+}
+
+.message.success {
+    color: #166534;
+    background: #dcfce7;
+}
+
+.message.error {
+    color: #991b1b;
+    background: #fee2e2;
+}
+
+.identity {
+    margin: 28px 0;
+    padding: 16px;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
 }
