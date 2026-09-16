@@ -29,6 +29,7 @@
                         <p>人数上限：{{ activity.max_participants }}　当前报名人数：{{ activity.registration_count }}</p>
                         <p>结束时间：{{ activity.end_time }}　状态：{{ activity.display_status }}</p>
                         <div class="card-actions">
+                            <a class="button secondary" href="{{ url_for('activity_registrations', activity_id=activity.id) }}">查看报名名单</a>
                             <a class="button secondary" href="{{ url_for('edit_activity', activity_id=activity.id) }}">修改</a>
                             {% if activity.status == 'open' and activity.display_status == '进行中' %}
                                 <form method="post" action="{{ url_for('close_activity', activity_id=activity.id) }}">

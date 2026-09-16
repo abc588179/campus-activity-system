@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ activity.title }} - 报名名单</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <main class="page wide-page">
+        <div class="page-header">
+            <div>
+                <h1>{{ activity.title }} - 报名名单</h1>
+                <p>查看已报名的学生。</p>
+            </div>
+            <a class="button secondary" href="{{ url_for('teacher_activities') }}">返回我的活动</a>
+        </div>
+        {% if registrations %}
+            <table class="registration-table">
+                <thead>
+                    <tr>
+                        <th>学生用户名</th>
+                        <th>报名时间</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for registration in registrations %}
+                        <tr>
+                            <td>{{ registration.student_username }}</td>
+                            <td>{{ registration.registered_at }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p class="empty-state">暂时没有学生报名。</p>
+        {% endif %}
+        <p><a href="{{ url_for('dashboard') }}">返回基础页面</a> | <a href="{{ url_for('logout') }}">登出</a></p>
+    </main>
+</body>
+</html>

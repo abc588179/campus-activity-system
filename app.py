@@ -185,6 +185,39 @@ def teacher_activities():
     return render_template("teacher_activities.html", activities=activities)
 
 
+@app.get("/teacher/activities/<int:activity_id>/registrations")
+def activity_registrations(activity_id):
+    response = teacher_required()
+    if response is not None:
+        return response
+
+    with get_connection(app.config["DATABASE"]) as connection:
+        activity = connection.execute(
+            "SELECT id, title FROM Activity WHERE id = ? AND organizer_id = ?",
+            (activity_id, session["user_id"]),
+        ).fetchone()
+        if activity is None:
+            flash("找不到属于当前教师的活动。", "error")
+            return redirect(url_for("teacher_activities"))
+
+        registrations = connection.execute(
+            """
+            SELECT User.username AS student_username, Registration.registered_at
+            FROM Registration
+            JOIN User ON User.id = Registration.student_id
+            WHERE Registration.activity_id = ? AND Registration.status = 'active'
+            ORDER BY Registration.registered_at ASC
+            """,
+            (activity_id,),
+        ).fetchall()
+
+    return render_template(
+        "teacher_registrations.html",
+        activity=activity,
+        registrations=registrations,
+    )
+
+
 @app.route("/teacher/activities/<int:activity_id>/edit", methods=["GET", "POST"])
 def edit_activity(activity_id):
     response = teacher_required()
