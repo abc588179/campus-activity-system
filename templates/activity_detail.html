@@ -9,6 +9,11 @@
 <body>
     <main class="page form-page">
         <h1>{{ activity.title }}</h1>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+                <p class="message {{ category }}">{{ message }}</p>
+            {% endfor %}
+        {% endwith %}
         <section class="detail-panel">
             <p><strong>活动说明：</strong>{{ activity.description }}</p>
             <p><strong>发布教师：</strong>{{ activity.organizer_name }}</p>
@@ -17,6 +22,15 @@
             <p><strong>结束时间：</strong>{{ activity.end_time }}</p>
             <p><strong>活动状态：</strong>{{ activity.display_status }}</p>
         </section>
+        {% if can_register %}
+            {% if activity.status == 'open' and activity.display_status == '进行中' and activity.registration_count < activity.max_participants %}
+                <form method="post" action="{{ url_for('register_activity', activity_id=activity.id) }}">
+                    <button class="button" type="submit">报名</button>
+                </form>
+            {% else %}
+                <p class="message error">当前活动不可报名。</p>
+            {% endif %}
+        {% endif %}
         <p><a href="{{ url_for('activities') }}">返回活动列表</a></p>
     </main>
 </body>

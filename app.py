@@ -103,6 +103,16 @@ def teacher_required():
     return None
 
 
+def student_required():
+    response = login_required()
+    if response is not None:
+        return response
+    if session.get("role") != "student":
+        flash("只有学生可以报名活动。", "error")
+        return redirect(url_for("activities"))
+    return None
+
+
 def activity_status(activity):
     if activity["status"] == "closed":
         return "已关闭"
@@ -282,7 +292,66 @@ def activity_detail(activity_id):
     if activity is None:
         flash("活动不存在。", "error")
         return redirect(url_for("activities"))
-    return render_template("activity_detail.html", activity=activity_with_display_status(activity))
+    return render_template(
+        "activity_detail.html",
+        activity=activity_with_display_status(activity),
+        can_register=session.get("role") == "student",
+    )
+
+
+@app.post("/activities/<int:activity_id>/register")
+def register_activity(activity_id):
+    response = student_required()
+    if response is not None:
+        return response
+
+    with get_connection(app.config["DATABASE"]) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        activity = connection.execute(
+            "SELECT * FROM Activity WHERE id = ?",
+            (activity_id,),
+        ).fetchone()
+        if activity is None:
+            flash("活动不存在。", "error")
+            return redirect(url_for("activities"))
+
+        if activity["status"] == "closed":
+            flash("活动已经关闭，不能报名。", "error")
+            return redirect(url_for("activity_detail", activity_id=activity_id))
+        if datetime.fromisoformat(activity["end_time"]) <= datetime.now():
+            flash("活动已经结束，不能报名。", "error")
+            return redirect(url_for("activity_detail", activity_id=activity_id))
+
+        existing_registration = connection.execute(
+            "SELECT id FROM Registration WHERE student_id = ? AND activity_id = ?",
+            (session["user_id"], activity_id),
+        ).fetchone()
+        if existing_registration is not None:
+            flash("你已经报名过这个活动，不能重复报名。", "error")
+            return redirect(url_for("activity_detail", activity_id=activity_id))
+
+        registration_count = connection.execute(
+            """
+            SELECT COUNT(*) AS registration_count
+            FROM Registration
+            WHERE activity_id = ? AND status = 'active'
+            """,
+            (activity_id,),
+        ).fetchone()["registration_count"]
+        if registration_count >= activity["max_participants"]:
+            flash("活动报名人数已达到上限，不能继续报名。", "error")
+            return redirect(url_for("activity_detail", activity_id=activity_id))
+
+        connection.execute(
+            """
+            INSERT INTO Registration (student_id, activity_id, status, registered_at)
+            VALUES (?, ?, 'active', ?)
+            """,
+            (session["user_id"], activity_id, datetime.now().isoformat(timespec="seconds")),
+        )
+
+    flash("报名成功！", "success")
+    return redirect(url_for("activity_detail", activity_id=activity_id))
 
 
 if __name__ == "__main__":
