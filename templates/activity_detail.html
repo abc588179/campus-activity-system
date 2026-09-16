@@ -23,12 +23,16 @@
             <p><strong>活动状态：</strong>{{ activity.display_status }}</p>
         </section>
         {% if can_register %}
-            {% if activity.status == 'open' and activity.display_status == '进行中' and activity.registration_count < activity.max_participants %}
-                <form method="post" action="{{ url_for('register_activity', activity_id=activity.id) }}">
-                    <button class="button" type="submit">报名</button>
-                </form>
+            {% if is_registered %}
+                <button class="button secondary" type="button" disabled>已报名</button>
+            {% elif current_count >= activity.max_participants %}
+                <button class="button secondary" type="button" disabled>名额已满</button>
+            {% elif activity.status != '进行中' %}
+                <button class="button secondary" type="button" disabled>活动已结束</button>
             {% else %}
-                <p class="message error">当前活动不可报名。</p>
+                <form method="post" action="{{ url_for('register_activity', activity_id=activity.id) }}">
+                    <button class="button" type="submit">立即报名</button>
+                </form>
             {% endif %}
         {% endif %}
         <p><a href="{{ url_for('activities') }}">返回活动列表</a></p>

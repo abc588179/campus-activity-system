@@ -289,6 +289,18 @@ def activity_detail(activity_id):
             """,
             (activity_id,),
         ).fetchone()
+        current_count = activity["registration_count"] if activity is not None else 0
+        is_registered = False
+        if activity is not None:
+            is_registered = connection.execute(
+                """
+                SELECT 1
+                FROM Registration
+                WHERE student_id = ? AND activity_id = ? AND status = 'active'
+                LIMIT 1
+                """,
+                (session["user_id"], activity_id),
+            ).fetchone() is not None
     if activity is None:
         flash("活动不存在。", "error")
         return redirect(url_for("activities"))
@@ -296,6 +308,8 @@ def activity_detail(activity_id):
         "activity_detail.html",
         activity=activity_with_display_status(activity),
         can_register=session.get("role") == "student",
+        current_count=current_count,
+        is_registered=is_registered,
     )
 
 
