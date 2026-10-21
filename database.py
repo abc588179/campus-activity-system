@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS Activity (
     max_participants INTEGER NOT NULL CHECK (max_participants > 0),
     end_time TEXT NOT NULL,
     status TEXT NOT NULL CHECK (status IN ('open', 'closed')),
+    confirmed_count INTEGER NOT NULL DEFAULT 0 CHECK (confirmed_count >= 0),
+    waiting_count INTEGER NOT NULL DEFAULT 0 CHECK (waiting_count >= 0),
     FOREIGN KEY (organizer_id) REFERENCES User (id)
 );
 
@@ -32,10 +34,20 @@ CREATE TABLE IF NOT EXISTS Registration (
     status TEXT NOT NULL CHECK (status IN ('confirmed', 'waiting', 'cancelled')),
     queue_order INTEGER NOT NULL DEFAULT 0,
     registered_at TEXT NOT NULL,
+    request_token TEXT,
     UNIQUE (student_id, activity_id),
     FOREIGN KEY (student_id) REFERENCES User (id),
     FOREIGN KEY (activity_id) REFERENCES Activity (id)
 );
+"""
+
+INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_registration_activity_status
+    ON Registration (activity_id, status);
+CREATE INDEX IF NOT EXISTS idx_registration_student
+    ON Registration (student_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_registration_request_token
+    ON Registration (request_token) WHERE request_token IS NOT NULL;
 """
 
 TEST_TEACHER_USERNAME = "teacher"
@@ -43,13 +55,20 @@ TEST_TEACHER_PASSWORD = "teacher123"
 TEST_ADMIN_USERNAME = "admin"
 TEST_ADMIN_PASSWORD = "admin123"
 
+# SQLite 在并发写入时默认只等待 5 秒（旧版本甚至立即报 database is locked），
+# 峰值期多个请求同时抢写锁很容易踩到超时。显式放宽并把日志模式切到 WAL，
+# 让读操作不再阻塞写操作。
+BUSY_TIMEOUT_MS = 15000
+
 
 @contextmanager
 def get_connection(database_path: str | Path):
     """Open and safely close a SQLite connection."""
-    connection = sqlite3.connect(database_path)
+    connection = sqlite3.connect(database_path, timeout=BUSY_TIMEOUT_MS / 1000)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
+    connection.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
+    connection.execute("PRAGMA synchronous = NORMAL")
     try:
         yield connection
         connection.commit()
@@ -62,6 +81,10 @@ def get_connection(database_path: str | Path):
 
 def _table_columns(connection, table_name: str) -> set[str]:
     return {row["name"] for row in connection.execute(f"PRAGMA table_info({table_name})")}
+
+
+def _enable_wal(connection) -> None:
+    connection.execute("PRAGMA journal_mode = WAL")
 
 
 def _upgrade_registration_table(connection) -> None:
@@ -107,12 +130,47 @@ def _upgrade_registration_table(connection) -> None:
     connection.execute("PRAGMA foreign_keys = ON")
 
 
+def _upgrade_activity_counters(connection) -> None:
+    """V3.0：为 Activity 增加已确认 / 候补冗余计数，并按 Registration 回填。"""
+    columns = _table_columns(connection, "Activity")
+    if "confirmed_count" not in columns:
+        connection.execute(
+            "ALTER TABLE Activity ADD COLUMN confirmed_count INTEGER NOT NULL DEFAULT 0"
+        )
+    if "waiting_count" not in columns:
+        connection.execute(
+            "ALTER TABLE Activity ADD COLUMN waiting_count INTEGER NOT NULL DEFAULT 0"
+        )
+    connection.execute(
+        """
+        UPDATE Activity SET
+            confirmed_count = (
+                SELECT COUNT(*) FROM Registration
+                WHERE Registration.activity_id = Activity.id
+                  AND Registration.status = 'confirmed'
+            ),
+            waiting_count = (
+                SELECT COUNT(*) FROM Registration
+                WHERE Registration.activity_id = Activity.id
+                  AND Registration.status = 'waiting'
+            )
+        """
+    )
+
+
+def _upgrade_registration_token(connection) -> None:
+    """V3.0：为 Registration 增加幂等提交令牌列。"""
+    if "request_token" not in _table_columns(connection, "Registration"):
+        connection.execute("ALTER TABLE Registration ADD COLUMN request_token TEXT")
+
+
 def init_db(database_path: str | Path) -> None:
-    """Create the database, migrate the V1.0 schema when needed, and seed test accounts."""
+    """Create the database, migrate older schemas when needed, and seed test accounts."""
     database_path = Path(database_path)
     database_path.parent.mkdir(parents=True, exist_ok=True)
 
     with get_connection(database_path) as connection:
+        _enable_wal(connection)
         connection.executescript(SCHEMA)
 
         if "queue_order" not in _table_columns(connection, "Registration"):
@@ -122,6 +180,10 @@ def init_db(database_path: str | Path) -> None:
             connection.execute(
                 "ALTER TABLE User ADD COLUMN account_status TEXT NOT NULL DEFAULT 'normal'"
             )
+
+        _upgrade_registration_token(connection)
+        _upgrade_activity_counters(connection)
+        connection.executescript(INDEXES)
 
         _seed_account(connection, TEST_TEACHER_USERNAME, TEST_TEACHER_PASSWORD, "teacher")
         _seed_account(connection, TEST_ADMIN_USERNAME, TEST_ADMIN_PASSWORD, "admin")
