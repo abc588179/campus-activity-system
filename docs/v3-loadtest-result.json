@@ -1,0 +1,263 @@
+{
+  "scenario": {
+    "server": "waitress, threads=8, connection_limit=1024",
+    "students": 60,
+    "capacity": 10,
+    "concurrency": 60,
+    "rounds": 3,
+    "note": "每一轮使用全新数据库；所有学生同时提交报名，令牌各不相同。"
+  },
+  "v2": {
+    "aggregate": {
+      "p50_ms": 258.8,
+      "p90_ms": 425.2,
+      "p99_ms": 765.0,
+      "mean_ms": 275.8,
+      "error_count": 0,
+      "oversold": 0
+    },
+    "rounds": [
+      {
+        "label": "V2.0",
+        "requests": 60,
+        "status_counts": {
+          "302": 60
+        },
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "mean_ms": 241.4,
+        "p50_ms": 226.6,
+        "p90_ms": 380.2,
+        "p99_ms": 618.7,
+        "max_ms": 725.3,
+        "errors_sample": [],
+        "round": 1,
+        "db": {
+          "capacity": 10,
+          "confirmed_rows": 10,
+          "waiting_rows": 50,
+          "oversold": 0,
+          "queue_order_is_1_to_n": true,
+          "has_counter_columns": false
+        },
+        "idempotent_probe": {
+          "attempts": 8,
+          "status_counts": {
+            "200": 8
+          },
+          "rows_created": 1,
+          "idempotent_ack_count": 0,
+          "duplicate_rejected_count": 7,
+          "registered_count": 1,
+          "server_error_count": 0
+        }
+      },
+      {
+        "label": "V2.0",
+        "requests": 60,
+        "status_counts": {
+          "302": 60
+        },
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "mean_ms": 305.2,
+        "p50_ms": 295.9,
+        "p90_ms": 463.4,
+        "p99_ms": 853.8,
+        "max_ms": 960.7,
+        "errors_sample": [],
+        "round": 2,
+        "db": {
+          "capacity": 10,
+          "confirmed_rows": 10,
+          "waiting_rows": 50,
+          "oversold": 0,
+          "queue_order_is_1_to_n": true,
+          "has_counter_columns": false
+        },
+        "idempotent_probe": {
+          "attempts": 8,
+          "status_counts": {
+            "200": 8
+          },
+          "rows_created": 1,
+          "idempotent_ack_count": 0,
+          "duplicate_rejected_count": 7,
+          "registered_count": 1,
+          "server_error_count": 0
+        }
+      },
+      {
+        "label": "V2.0",
+        "requests": 60,
+        "status_counts": {
+          "302": 60
+        },
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "mean_ms": 280.8,
+        "p50_ms": 253.8,
+        "p90_ms": 432.1,
+        "p99_ms": 822.6,
+        "max_ms": 930.2,
+        "errors_sample": [],
+        "round": 3,
+        "db": {
+          "capacity": 10,
+          "confirmed_rows": 10,
+          "waiting_rows": 50,
+          "oversold": 0,
+          "queue_order_is_1_to_n": true,
+          "has_counter_columns": false
+        },
+        "idempotent_probe": {
+          "attempts": 8,
+          "status_counts": {
+            "200": 8
+          },
+          "rows_created": 1,
+          "idempotent_ack_count": 0,
+          "duplicate_rejected_count": 7,
+          "registered_count": 1,
+          "server_error_count": 0
+        }
+      }
+    ]
+  },
+  "v3": {
+    "aggregate": {
+      "p50_ms": 166.9,
+      "p90_ms": 259.7,
+      "p99_ms": 339.9,
+      "mean_ms": 168.2,
+      "error_count": 0,
+      "oversold": 0
+    },
+    "rounds": [
+      {
+        "label": "V3.0",
+        "requests": 60,
+        "status_counts": {
+          "302": 60
+        },
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "mean_ms": 150.7,
+        "p50_ms": 150.6,
+        "p90_ms": 230.9,
+        "p99_ms": 310.2,
+        "max_ms": 339.9,
+        "errors_sample": [],
+        "round": 1,
+        "db": {
+          "capacity": 10,
+          "confirmed_rows": 10,
+          "waiting_rows": 50,
+          "oversold": 0,
+          "queue_order_is_1_to_n": true,
+          "has_counter_columns": true,
+          "counter_confirmed": 10,
+          "counter_waiting": 50,
+          "counter_matches_rows": true
+        },
+        "idempotent_probe": {
+          "attempts": 8,
+          "status_counts": {
+            "200": 8
+          },
+          "rows_created": 1,
+          "idempotent_ack_count": 7,
+          "duplicate_rejected_count": 0,
+          "registered_count": 1,
+          "server_error_count": 0
+        }
+      },
+      {
+        "label": "V3.0",
+        "requests": 60,
+        "status_counts": {
+          "302": 60
+        },
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "mean_ms": 162.5,
+        "p50_ms": 160.7,
+        "p90_ms": 252.3,
+        "p99_ms": 348.4,
+        "max_ms": 385.7,
+        "errors_sample": [],
+        "round": 2,
+        "db": {
+          "capacity": 10,
+          "confirmed_rows": 10,
+          "waiting_rows": 50,
+          "oversold": 0,
+          "queue_order_is_1_to_n": true,
+          "has_counter_columns": true,
+          "counter_confirmed": 10,
+          "counter_waiting": 50,
+          "counter_matches_rows": true
+        },
+        "idempotent_probe": {
+          "attempts": 8,
+          "status_counts": {
+            "200": 8
+          },
+          "rows_created": 1,
+          "idempotent_ack_count": 7,
+          "duplicate_rejected_count": 0,
+          "registered_count": 1,
+          "server_error_count": 0
+        }
+      },
+      {
+        "label": "V3.0",
+        "requests": 60,
+        "status_counts": {
+          "302": 60
+        },
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "mean_ms": 191.3,
+        "p50_ms": 189.4,
+        "p90_ms": 295.9,
+        "p99_ms": 361.0,
+        "max_ms": 410.9,
+        "errors_sample": [],
+        "round": 3,
+        "db": {
+          "capacity": 10,
+          "confirmed_rows": 10,
+          "waiting_rows": 50,
+          "oversold": 0,
+          "queue_order_is_1_to_n": true,
+          "has_counter_columns": true,
+          "counter_confirmed": 10,
+          "counter_waiting": 50,
+          "counter_matches_rows": true
+        },
+        "idempotent_probe": {
+          "attempts": 8,
+          "status_counts": {
+            "200": 8
+          },
+          "rows_created": 1,
+          "idempotent_ack_count": 7,
+          "duplicate_rejected_count": 0,
+          "registered_count": 1,
+          "server_error_count": 0
+        }
+      }
+    ]
+  },
+  "delta": {
+    "p50_reduction_pct": 35.5,
+    "p90_reduction_pct": 38.9,
+    "p99_reduction_pct": 55.6,
+    "mean_reduction_pct": 39.0,
+    "v2_oversold": 0,
+    "v3_oversold": 0,
+    "v2_errors": 0,
+    "v3_errors": 0
+  }
+}
