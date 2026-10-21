@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>用户账号 - 校园活动管理系统 V2.0</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <main class="page wide-page">
+        <div class="page-header">
+            <div>
+                <h1>用户账号</h1>
+                <p>查看账号角色与使用状态；本轮不提供角色调整与账号停用操作。</p>
+            </div>
+            <a class="button secondary" href="{{ url_for('admin_activities') }}">全平台活动</a>
+        </div>
+        <table class="registration-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>用户名</th>
+                    <th>角色</th>
+                    <th>账号状态</th>
+                    <th>发布活动数</th>
+                    <th>报名记录数</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                    <tr>
+                        <td>{{ user.id }}</td>
+                        <td>{{ user.username }}</td>
+                        <td>{{ user.role_label }}</td>
+                        <td>{% if user.account_status == 'normal' %}正常{% else %}已停用{% endif %}</td>
+                        <td>{{ user.activity_count }}</td>
+                        <td>{{ user.registration_count }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <p><a href="{{ url_for('dashboard') }}">返回基础页面</a> | <a href="{{ url_for('logout') }}">登出</a></p>
+    </main>
+</body>
+</html>

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>全平台活动 - 校园活动管理系统 V2.0</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <main class="page wide-page">
+        <div class="page-header">
+            <div>
+                <h1>全平台活动</h1>
+                <p>仅用于监督活动信息，不提供报名审批、候补处理等业务操作。</p>
+            </div>
+            <a class="button secondary" href="{{ url_for('admin_users') }}">用户账号</a>
+        </div>
+        {% if activities %}
+            <table class="registration-table">
+                <thead>
+                    <tr>
+                        <th>活动名称</th>
+                        <th>发布教师</th>
+                        <th>人数上限</th>
+                        <th>已确认</th>
+                        <th>候补</th>
+                        <th>结束时间</th>
+                        <th>状态</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for activity in activities %}
+                        <tr>
+                            <td>{{ activity.title }}</td>
+                            <td>{{ activity.organizer_name }}</td>
+                            <td>{{ activity.max_participants }}</td>
+                            <td>{{ activity.registration_count }}</td>
+                            <td>{{ activity.waiting_count }}</td>
+                            <td>{{ activity.end_time }}</td>
+                            <td>{{ activity.display_status }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p class="empty-state">平台上还没有活动。</p>
+        {% endif %}
+        <p><a href="{{ url_for('dashboard') }}">返回基础页面</a> | <a href="{{ url_for('logout') }}">登出</a></p>
+    </main>
+</body>
+</html>

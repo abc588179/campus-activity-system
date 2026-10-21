@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ activity.title }} - 校园活动管理系统 V1.0</title>
+    <title>{{ activity.title }} - 校园活动管理系统 V2.0</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
@@ -18,17 +18,32 @@
             <p><strong>活动说明：</strong>{{ activity.description }}</p>
             <p><strong>发布教师：</strong>{{ activity.organizer_name }}</p>
             <p><strong>人数上限：</strong>{{ activity.max_participants }}</p>
-            <p><strong>当前报名人数：</strong>{{ activity.registration_count }}</p>
+            <p><strong>当前报名人数：</strong>{{ current_count }}</p>
+            <p><strong>当前候补人数：</strong>{{ waiting_count }}</p>
             <p><strong>结束时间：</strong>{{ activity.end_time }}</p>
             <p><strong>活动状态：</strong>{{ activity.display_status }}</p>
+            {% if can_register and my_status_label %}
+                <p><strong>我的报名状态：</strong>
+                    <span class="status-badge status-{{ my_status }}">{{ my_status_label }}</span>
+                    {% if my_status == 'waiting' %}（候补队列第 {{ my_queue_order }} 位）{% endif %}
+                </p>
+            {% endif %}
         </section>
         {% if can_register %}
-            {% if is_registered %}
-                <button class="button secondary" type="button" disabled>已报名</button>
-            {% elif current_count >= activity.max_participants %}
-                <button class="button secondary" type="button" disabled>名额已满</button>
-            {% elif activity.status != '进行中' %}
+            {% if my_status == 'confirmed' %}
+                <form method="post" action="{{ url_for('cancel_registration', activity_id=activity.id) }}">
+                    <button class="button danger" type="submit">取消报名</button>
+                </form>
+            {% elif my_status == 'waiting' %}
+                <form method="post" action="{{ url_for('leave_waitlist', activity_id=activity.id) }}">
+                    <button class="button secondary" type="submit">退出候补</button>
+                </form>
+            {% elif activity.display_status != '进行中' %}
                 <button class="button secondary" type="button" disabled>活动已结束</button>
+            {% elif current_count >= activity.max_participants %}
+                <form method="post" action="{{ url_for('register_activity', activity_id=activity.id) }}">
+                    <button class="button" type="submit">名额已满，加入候补队列</button>
+                </form>
             {% else %}
                 <form method="post" action="{{ url_for('register_activity', activity_id=activity.id) }}">
                     <button class="button" type="submit">立即报名</button>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>我的活动 - 校园活动管理系统 V1.0</title>
+    <title>我的活动 - 校园活动管理系统 V2.0</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
@@ -26,10 +26,10 @@
                     <article class="activity-card">
                         <h2>{{ activity.title }}</h2>
                         <p>{{ activity.description }}</p>
-                        <p>人数上限：{{ activity.max_participants }}　当前报名人数：{{ activity.registration_count }}</p>
+                        <p>人数上限：{{ activity.max_participants }}　已确认人数：{{ activity.registration_count }}　候补人数：{{ activity.waiting_count }}</p>
                         <p>结束时间：{{ activity.end_time }}　状态：{{ activity.display_status }}</p>
                         <div class="card-actions">
-                            <a class="button secondary" href="{{ url_for('activity_registrations', activity_id=activity.id) }}">查看报名名单</a>
+                            <a class="button secondary" href="{{ url_for('activity_registrations', activity_id=activity.id) }}">报名管理</a>
                             <a class="button secondary" href="{{ url_for('edit_activity', activity_id=activity.id) }}">修改</a>
                             {% if activity.status == 'open' and activity.display_status == '进行中' %}
                                 <form method="post" action="{{ url_for('close_activity', activity_id=activity.id) }}">

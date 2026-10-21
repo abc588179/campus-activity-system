@@ -3,19 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ activity.title }} - 报名名单</title>
+    <title>{{ activity.title }} - 报名管理</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <main class="page wide-page">
         <div class="page-header">
             <div>
-                <h1>{{ activity.title }} - 报名名单</h1>
-                <p>查看已报名的学生。</p>
+                <h1>{{ activity.title }} - 报名管理</h1>
+                <p>已确认名单与候补名单分别展示，候补名单按队列顺序排列。</p>
             </div>
             <a class="button secondary" href="{{ url_for('teacher_activities') }}">返回我的活动</a>
         </div>
-        {% if registrations %}
+
+        <h2>已确认名单（{{ confirmed|length }} / {{ activity.max_participants }}）</h2>
+        {% if confirmed %}
             <table class="registration-table">
                 <thead>
                     <tr>
@@ -24,7 +26,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% for registration in registrations %}
+                    {% for registration in confirmed %}
                         <tr>
                             <td>{{ registration.student_username }}</td>
                             <td>{{ registration.registered_at }}</td>
@@ -33,7 +35,31 @@
                 </tbody>
             </table>
         {% else %}
-            <p class="empty-state">暂时没有学生报名。</p>
+            <p class="empty-state">暂时没有已确认的学生。</p>
+        {% endif %}
+
+        <h2>候补名单（{{ waiting|length }}）</h2>
+        {% if waiting %}
+            <table class="registration-table">
+                <thead>
+                    <tr>
+                        <th>候补位置</th>
+                        <th>学生用户名</th>
+                        <th>进入候补时间</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for registration in waiting %}
+                        <tr>
+                            <td>{{ registration.queue_order }}</td>
+                            <td>{{ registration.student_username }}</td>
+                            <td>{{ registration.registered_at }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p class="empty-state">当前没有候补学生。</p>
         {% endif %}
         <p><a href="{{ url_for('dashboard') }}">返回基础页面</a> | <a href="{{ url_for('logout') }}">登出</a></p>
     </main>
