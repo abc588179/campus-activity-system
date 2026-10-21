@@ -1,1 +1,4 @@
 Flask
+waitress
+requests
+pandas

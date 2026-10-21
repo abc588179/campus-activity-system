@@ -1,5 +1,6 @@
 from pathlib import Path
 import sqlite3
+import uuid
 from datetime import datetime
 
 from flask import Flask, flash, redirect, render_template, request, session, url_for
@@ -10,7 +11,7 @@ from database import get_connection, init_db
 
 app = Flask(__name__)
 app.config["DATABASE"] = Path(app.instance_path) / "campus_activity.db"
-app.config["SECRET_KEY"] = "campus-activity-system-v2-development-key"
+app.config["SECRET_KEY"] = "campus-activity-system-v3-development-key"
 init_db(app.config["DATABASE"])
 
 REGISTRATION_STATUS_LABELS = {
@@ -138,8 +139,11 @@ def activity_status(activity):
 
 
 def activity_with_display_status(activity):
+    """补上展示用字段；人数直接取 Activity 上的冗余计数，不再对 Registration 聚合。"""
     activity = dict(activity)
     activity["display_status"] = activity_status(activity)
+    activity.setdefault("registration_count", activity.get("confirmed_count", 0))
+    activity.setdefault("waiting_count", activity.get("waiting_count", 0))
     return activity
 
 
@@ -161,7 +165,7 @@ def _renumber_waitlist(connection, activity_id):
 
 
 def _promote_first_waiting(connection, activity_id):
-    """把候补队列首位递补为已确认，并重排剩余候补顺序。返回递补成功的学生 id。"""
+    """把候补队列首位递补为已确认，并同步维护计数。返回递补成功的学生 id。"""
     candidate = connection.execute(
         """
         SELECT id, student_id FROM Registration
@@ -176,6 +180,15 @@ def _promote_first_waiting(connection, activity_id):
     connection.execute(
         "UPDATE Registration SET status = 'confirmed', queue_order = 0 WHERE id = ?",
         (candidate["id"],),
+    )
+    connection.execute(
+        """
+        UPDATE Activity SET
+            confirmed_count = confirmed_count + 1,
+            waiting_count = MAX(waiting_count - 1, 0)
+        WHERE id = ?
+        """,
+        (activity_id,),
     )
     _renumber_waitlist(connection, activity_id)
     return candidate["student_id"]
@@ -213,8 +226,9 @@ def teacher_activities():
             connection.execute(
                 """
                 INSERT INTO Activity
-                    (title, description, organizer_id, max_participants, end_time, status)
-                VALUES (?, ?, ?, ?, ?, 'open')
+                    (title, description, organizer_id, max_participants, end_time, status,
+                     confirmed_count, waiting_count)
+                VALUES (?, ?, ?, ?, ?, 'open', 0, 0)
                 """,
                 (title, description, session["user_id"], max_participants, end_time),
             )
@@ -224,16 +238,8 @@ def teacher_activities():
     with get_connection(app.config["DATABASE"]) as connection:
         activities = connection.execute(
             """
-            SELECT Activity.*, COUNT(
-                CASE WHEN Registration.status = 'confirmed' THEN Registration.id END
-            ) AS registration_count,
-            COUNT(
-                CASE WHEN Registration.status = 'waiting' THEN Registration.id END
-            ) AS waiting_count
-            FROM Activity
-            LEFT JOIN Registration ON Registration.activity_id = Activity.id
+            SELECT Activity.* FROM Activity
             WHERE Activity.organizer_id = ?
-            GROUP BY Activity.id
             ORDER BY Activity.id DESC
             """,
             (session["user_id"],),
@@ -250,7 +256,8 @@ def activity_registrations(activity_id):
 
     with get_connection(app.config["DATABASE"]) as connection:
         activity = connection.execute(
-            "SELECT id, title, max_participants FROM Activity WHERE id = ? AND organizer_id = ?",
+            "SELECT id, title, max_participants, confirmed_count, waiting_count "
+            "FROM Activity WHERE id = ? AND organizer_id = ?",
             (activity_id, session["user_id"]),
         ).fetchone()
         if activity is None:
@@ -317,6 +324,13 @@ def edit_activity(activity_id):
                 flash("请填写有效信息，人数上限必须为正数且结束时间必须晚于当前时间。", "error")
                 return render_template("teacher_activity_form.html", activity=activity)
 
+            if max_participants < activity["confirmed_count"]:
+                flash(
+                    f"人数上限不能小于当前已确认人数（{activity['confirmed_count']} 人）。",
+                    "error",
+                )
+                return render_template("teacher_activity_form.html", activity=activity)
+
             connection.execute(
                 """
                 UPDATE Activity
@@ -358,13 +372,9 @@ def activities():
     with get_connection(app.config["DATABASE"]) as connection:
         activity_rows = connection.execute(
             """
-            SELECT Activity.*, User.username AS organizer_name, COUNT(
-                CASE WHEN Registration.status = 'confirmed' THEN Registration.id END
-            ) AS registration_count
+            SELECT Activity.*, User.username AS organizer_name
             FROM Activity
             JOIN User ON User.id = Activity.organizer_id
-            LEFT JOIN Registration ON Registration.activity_id = Activity.id
-            GROUP BY Activity.id
             ORDER BY Activity.id DESC
             """
         ).fetchall()
@@ -381,14 +391,10 @@ def activity_detail(activity_id):
     with get_connection(app.config["DATABASE"]) as connection:
         activity = connection.execute(
             """
-            SELECT Activity.*, User.username AS organizer_name, COUNT(
-                CASE WHEN Registration.status = 'confirmed' THEN Registration.id END
-            ) AS registration_count
+            SELECT Activity.*, User.username AS organizer_name
             FROM Activity
             JOIN User ON User.id = Activity.organizer_id
-            LEFT JOIN Registration ON Registration.activity_id = Activity.id
             WHERE Activity.id = ?
-            GROUP BY Activity.id
             """,
             (activity_id,),
         ).fetchone()
@@ -396,15 +402,6 @@ def activity_detail(activity_id):
         if activity is None:
             flash("活动不存在。", "error")
             return redirect(url_for("activities"))
-
-        registration_count = activity["registration_count"]
-        waiting_count = connection.execute(
-            """
-            SELECT COUNT(*) AS waiting_count FROM Registration
-            WHERE activity_id = ? AND status = 'waiting'
-            """,
-            (activity_id,),
-        ).fetchone()["waiting_count"]
 
         my_registration = connection.execute(
             """
@@ -420,21 +417,31 @@ def activity_detail(activity_id):
         "activity_detail.html",
         activity=activity_with_display_status(activity),
         can_register=session.get("role") == "student",
-        current_count=registration_count,
-        waiting_count=waiting_count,
+        current_count=activity["confirmed_count"],
+        waiting_count=activity["waiting_count"],
         my_status=my_status,
         my_queue_order=my_queue_order,
         my_status_label=REGISTRATION_STATUS_LABELS.get(my_status),
+        submit_token=uuid.uuid4().hex,
     )
 
 
 @app.post("/activities/<int:activity_id>/register")
 def register_activity(activity_id):
+    """报名提交。
+
+    V3.0 的三处关键改动：
+    1. 用一条带条件的 UPDATE 原子占用名额，不再先 COUNT 再 INSERT；
+    2. 接受前端提交的 request_token，同一令牌重复到达时直接返回首次结果（幂等）；
+    3. 名额与候补序号都由 Activity 上的计数列维护，写锁内不再做聚合查询。
+    """
     response = student_required()
     if response is not None:
         return response
 
+    request_token = (request.form.get("request_token") or "").strip() or None
     now = datetime.now().isoformat(timespec="seconds")
+
     with get_connection(app.config["DATABASE"]) as connection:
         connection.execute("BEGIN IMMEDIATE")
         activity = connection.execute(
@@ -452,6 +459,18 @@ def register_activity(activity_id):
             flash("活动已经结束，不能报名。", "error")
             return redirect(url_for("activity_detail", activity_id=activity_id))
 
+        if request_token is not None:
+            replay = connection.execute(
+                "SELECT status, queue_order FROM Registration WHERE request_token = ?",
+                (request_token,),
+            ).fetchone()
+            if replay is not None:
+                label = REGISTRATION_STATUS_LABELS.get(replay["status"], replay["status"])
+                if replay["status"] == "waiting":
+                    label += f"（候补队列第 {replay['queue_order']} 位）"
+                flash(f"本次提交此前已处理，结果：{label}。", "success")
+                return redirect(url_for("activity_detail", activity_id=activity_id))
+
         existing_registration = connection.execute(
             "SELECT id, status FROM Registration WHERE student_id = ? AND activity_id = ?",
             (session["user_id"], activity_id),
@@ -460,60 +479,62 @@ def register_activity(activity_id):
             flash("你已经报名过这个活动，不能重复报名。", "error")
             return redirect(url_for("activity_detail", activity_id=activity_id))
 
-        confirmed_count = connection.execute(
+        acquired = connection.execute(
             """
-            SELECT COUNT(*) AS confirmed_count FROM Registration
-            WHERE activity_id = ? AND status = 'confirmed'
+            UPDATE Activity SET confirmed_count = confirmed_count + 1
+            WHERE id = ? AND confirmed_count < max_participants
             """,
             (activity_id,),
-        ).fetchone()["confirmed_count"]
+        ).rowcount
 
-        if confirmed_count < activity["max_participants"]:
+        if acquired == 1:
             if existing_registration is not None:
                 connection.execute(
                     """
                     UPDATE Registration
-                    SET status = 'confirmed', queue_order = 0, registered_at = ?
+                    SET status = 'confirmed', queue_order = 0, registered_at = ?, request_token = ?
                     WHERE id = ?
                     """,
-                    (now, existing_registration["id"]),
+                    (now, request_token, existing_registration["id"]),
                 )
             else:
                 connection.execute(
                     """
-                    INSERT INTO Registration (student_id, activity_id, status, queue_order, registered_at)
-                    VALUES (?, ?, 'confirmed', 0, ?)
+                    INSERT INTO Registration
+                        (student_id, activity_id, status, queue_order, registered_at, request_token)
+                    VALUES (?, ?, 'confirmed', 0, ?, ?)
                     """,
-                    (session["user_id"], activity_id, now),
+                    (session["user_id"], activity_id, now, request_token),
                 )
             flash("报名成功！", "success")
             return redirect(url_for("activity_detail", activity_id=activity_id))
 
-        waiting_count = connection.execute(
+        position = connection.execute(
             """
-            SELECT COUNT(*) AS waiting_count FROM Registration
-            WHERE activity_id = ? AND status = 'waiting'
+            UPDATE Activity SET waiting_count = waiting_count + 1
+            WHERE id = ?
+            RETURNING waiting_count
             """,
             (activity_id,),
         ).fetchone()["waiting_count"]
-        position = waiting_count + 1
 
         if existing_registration is not None:
             connection.execute(
                 """
                 UPDATE Registration
-                SET status = 'waiting', queue_order = ?, registered_at = ?
+                SET status = 'waiting', queue_order = ?, registered_at = ?, request_token = ?
                 WHERE id = ?
                 """,
-                (position, now, existing_registration["id"]),
+                (position, now, request_token, existing_registration["id"]),
             )
         else:
             connection.execute(
                 """
-                INSERT INTO Registration (student_id, activity_id, status, queue_order, registered_at)
-                VALUES (?, ?, 'waiting', ?, ?)
+                INSERT INTO Registration
+                    (student_id, activity_id, status, queue_order, registered_at, request_token)
+                VALUES (?, ?, 'waiting', ?, ?, ?)
                 """,
-                (session["user_id"], activity_id, position, now),
+                (session["user_id"], activity_id, position, now, request_token),
             )
         flash(f"活动名额已满，你已进入候补队列，当前候补位置第 {position} 位。", "success")
         return redirect(url_for("activity_detail", activity_id=activity_id))
@@ -538,6 +559,10 @@ def cancel_registration(activity_id):
         connection.execute(
             "UPDATE Registration SET status = 'cancelled', queue_order = 0 WHERE id = ?",
             (registration["id"],),
+        )
+        connection.execute(
+            "UPDATE Activity SET confirmed_count = MAX(confirmed_count - 1, 0) WHERE id = ?",
+            (activity_id,),
         )
         promoted_student_id = _promote_first_waiting(connection, activity_id)
 
@@ -567,6 +592,10 @@ def leave_waitlist(activity_id):
         connection.execute(
             "UPDATE Registration SET status = 'cancelled', queue_order = 0 WHERE id = ?",
             (registration["id"],),
+        )
+        connection.execute(
+            "UPDATE Activity SET waiting_count = MAX(waiting_count - 1, 0) WHERE id = ?",
+            (activity_id,),
         )
         _renumber_waitlist(connection, activity_id)
 
@@ -611,15 +640,9 @@ def admin_activities():
     with get_connection(app.config["DATABASE"]) as connection:
         rows = connection.execute(
             """
-            SELECT Activity.*, User.username AS organizer_name,
-                   COUNT(CASE WHEN Registration.status = 'confirmed' THEN Registration.id END)
-                       AS registration_count,
-                   COUNT(CASE WHEN Registration.status = 'waiting' THEN Registration.id END)
-                       AS waiting_count
+            SELECT Activity.*, User.username AS organizer_name
             FROM Activity
             JOIN User ON User.id = Activity.organizer_id
-            LEFT JOIN Registration ON Registration.activity_id = Activity.id
-            GROUP BY Activity.id
             ORDER BY Activity.id DESC
             """
         ).fetchall()
