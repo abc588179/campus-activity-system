@@ -10,8 +10,14 @@ from database import get_connection, init_db
 
 app = Flask(__name__)
 app.config["DATABASE"] = Path(app.instance_path) / "campus_activity.db"
-app.config["SECRET_KEY"] = "campus-activity-system-v1-development-key"
+app.config["SECRET_KEY"] = "campus-activity-system-v2-development-key"
 init_db(app.config["DATABASE"])
+
+REGISTRATION_STATUS_LABELS = {
+    "confirmed": "已确认参加",
+    "waiting": "候补中",
+    "cancelled": "已取消",
+}
 
 
 @app.get("/")
@@ -113,6 +119,16 @@ def student_required():
     return None
 
 
+def admin_required():
+    response = login_required()
+    if response is not None:
+        return response
+    if session.get("role") != "admin":
+        flash("只有系统管理员可以访问该页面。", "error")
+        return redirect(url_for("dashboard"))
+    return None
+
+
 def activity_status(activity):
     if activity["status"] == "closed":
         return "已关闭"
@@ -125,6 +141,44 @@ def activity_with_display_status(activity):
     activity = dict(activity)
     activity["display_status"] = activity_status(activity)
     return activity
+
+
+def _renumber_waitlist(connection, activity_id):
+    """把候补队列按现有先后顺序重新编号为 1..n，用于递补或退出后的位置前移。"""
+    rows = connection.execute(
+        """
+        SELECT id FROM Registration
+        WHERE activity_id = ? AND status = 'waiting'
+        ORDER BY queue_order ASC, id ASC
+        """,
+        (activity_id,),
+    ).fetchall()
+    for position, row in enumerate(rows, start=1):
+        connection.execute(
+            "UPDATE Registration SET queue_order = ? WHERE id = ?",
+            (position, row["id"]),
+        )
+
+
+def _promote_first_waiting(connection, activity_id):
+    """把候补队列首位递补为已确认，并重排剩余候补顺序。返回递补成功的学生 id。"""
+    candidate = connection.execute(
+        """
+        SELECT id, student_id FROM Registration
+        WHERE activity_id = ? AND status = 'waiting'
+        ORDER BY queue_order ASC, id ASC
+        LIMIT 1
+        """,
+        (activity_id,),
+    ).fetchone()
+    if candidate is None:
+        return None
+    connection.execute(
+        "UPDATE Registration SET status = 'confirmed', queue_order = 0 WHERE id = ?",
+        (candidate["id"],),
+    )
+    _renumber_waitlist(connection, activity_id)
+    return candidate["student_id"]
 
 
 @app.route("/teacher/activities", methods=["GET", "POST"])
@@ -171,8 +225,11 @@ def teacher_activities():
         activities = connection.execute(
             """
             SELECT Activity.*, COUNT(
-                CASE WHEN Registration.status = 'active' THEN Registration.id END
-            ) AS registration_count
+                CASE WHEN Registration.status = 'confirmed' THEN Registration.id END
+            ) AS registration_count,
+            COUNT(
+                CASE WHEN Registration.status = 'waiting' THEN Registration.id END
+            ) AS waiting_count
             FROM Activity
             LEFT JOIN Registration ON Registration.activity_id = Activity.id
             WHERE Activity.organizer_id = ?
@@ -193,20 +250,32 @@ def activity_registrations(activity_id):
 
     with get_connection(app.config["DATABASE"]) as connection:
         activity = connection.execute(
-            "SELECT id, title FROM Activity WHERE id = ? AND organizer_id = ?",
+            "SELECT id, title, max_participants FROM Activity WHERE id = ? AND organizer_id = ?",
             (activity_id, session["user_id"]),
         ).fetchone()
         if activity is None:
             flash("找不到属于当前教师的活动。", "error")
             return redirect(url_for("teacher_activities"))
 
-        registrations = connection.execute(
+        confirmed = connection.execute(
             """
             SELECT User.username AS student_username, Registration.registered_at
             FROM Registration
             JOIN User ON User.id = Registration.student_id
-            WHERE Registration.activity_id = ? AND Registration.status = 'active'
+            WHERE Registration.activity_id = ? AND Registration.status = 'confirmed'
             ORDER BY Registration.registered_at ASC
+            """,
+            (activity_id,),
+        ).fetchall()
+
+        waiting = connection.execute(
+            """
+            SELECT User.username AS student_username, Registration.registered_at,
+                   Registration.queue_order
+            FROM Registration
+            JOIN User ON User.id = Registration.student_id
+            WHERE Registration.activity_id = ? AND Registration.status = 'waiting'
+            ORDER BY Registration.queue_order ASC
             """,
             (activity_id,),
         ).fetchall()
@@ -214,7 +283,8 @@ def activity_registrations(activity_id):
     return render_template(
         "teacher_registrations.html",
         activity=activity,
-        registrations=registrations,
+        confirmed=confirmed,
+        waiting=waiting,
     )
 
 
@@ -289,7 +359,7 @@ def activities():
         activity_rows = connection.execute(
             """
             SELECT Activity.*, User.username AS organizer_name, COUNT(
-                CASE WHEN Registration.status = 'active' THEN Registration.id END
+                CASE WHEN Registration.status = 'confirmed' THEN Registration.id END
             ) AS registration_count
             FROM Activity
             JOIN User ON User.id = Activity.organizer_id
@@ -312,7 +382,7 @@ def activity_detail(activity_id):
         activity = connection.execute(
             """
             SELECT Activity.*, User.username AS organizer_name, COUNT(
-                CASE WHEN Registration.status = 'active' THEN Registration.id END
+                CASE WHEN Registration.status = 'confirmed' THEN Registration.id END
             ) AS registration_count
             FROM Activity
             JOIN User ON User.id = Activity.organizer_id
@@ -322,27 +392,39 @@ def activity_detail(activity_id):
             """,
             (activity_id,),
         ).fetchone()
-        current_count = activity["registration_count"] if activity is not None else 0
-        is_registered = False
-        if activity is not None:
-            is_registered = connection.execute(
-                """
-                SELECT 1
-                FROM Registration
-                WHERE student_id = ? AND activity_id = ? AND status = 'active'
-                LIMIT 1
-                """,
-                (session["user_id"], activity_id),
-            ).fetchone() is not None
-    if activity is None:
-        flash("活动不存在。", "error")
-        return redirect(url_for("activities"))
+
+        if activity is None:
+            flash("活动不存在。", "error")
+            return redirect(url_for("activities"))
+
+        registration_count = activity["registration_count"]
+        waiting_count = connection.execute(
+            """
+            SELECT COUNT(*) AS waiting_count FROM Registration
+            WHERE activity_id = ? AND status = 'waiting'
+            """,
+            (activity_id,),
+        ).fetchone()["waiting_count"]
+
+        my_registration = connection.execute(
+            """
+            SELECT status, queue_order FROM Registration
+            WHERE student_id = ? AND activity_id = ?
+            """,
+            (session["user_id"], activity_id),
+        ).fetchone()
+
+    my_status = my_registration["status"] if my_registration is not None else None
+    my_queue_order = my_registration["queue_order"] if my_registration is not None else 0
     return render_template(
         "activity_detail.html",
         activity=activity_with_display_status(activity),
         can_register=session.get("role") == "student",
-        current_count=current_count,
-        is_registered=is_registered,
+        current_count=registration_count,
+        waiting_count=waiting_count,
+        my_status=my_status,
+        my_queue_order=my_queue_order,
+        my_status_label=REGISTRATION_STATUS_LABELS.get(my_status),
     )
 
 
@@ -352,6 +434,7 @@ def register_activity(activity_id):
     if response is not None:
         return response
 
+    now = datetime.now().isoformat(timespec="seconds")
     with get_connection(app.config["DATABASE"]) as connection:
         connection.execute("BEGIN IMMEDIATE")
         activity = connection.execute(
@@ -370,35 +453,208 @@ def register_activity(activity_id):
             return redirect(url_for("activity_detail", activity_id=activity_id))
 
         existing_registration = connection.execute(
-            "SELECT id FROM Registration WHERE student_id = ? AND activity_id = ?",
+            "SELECT id, status FROM Registration WHERE student_id = ? AND activity_id = ?",
             (session["user_id"], activity_id),
         ).fetchone()
-        if existing_registration is not None:
+        if existing_registration is not None and existing_registration["status"] != "cancelled":
             flash("你已经报名过这个活动，不能重复报名。", "error")
             return redirect(url_for("activity_detail", activity_id=activity_id))
 
-        registration_count = connection.execute(
+        confirmed_count = connection.execute(
             """
-            SELECT COUNT(*) AS registration_count
-            FROM Registration
-            WHERE activity_id = ? AND status = 'active'
+            SELECT COUNT(*) AS confirmed_count FROM Registration
+            WHERE activity_id = ? AND status = 'confirmed'
             """,
             (activity_id,),
-        ).fetchone()["registration_count"]
-        if registration_count >= activity["max_participants"]:
-            flash("活动报名人数已达到上限，不能继续报名。", "error")
+        ).fetchone()["confirmed_count"]
+
+        if confirmed_count < activity["max_participants"]:
+            if existing_registration is not None:
+                connection.execute(
+                    """
+                    UPDATE Registration
+                    SET status = 'confirmed', queue_order = 0, registered_at = ?
+                    WHERE id = ?
+                    """,
+                    (now, existing_registration["id"]),
+                )
+            else:
+                connection.execute(
+                    """
+                    INSERT INTO Registration (student_id, activity_id, status, queue_order, registered_at)
+                    VALUES (?, ?, 'confirmed', 0, ?)
+                    """,
+                    (session["user_id"], activity_id, now),
+                )
+            flash("报名成功！", "success")
+            return redirect(url_for("activity_detail", activity_id=activity_id))
+
+        waiting_count = connection.execute(
+            """
+            SELECT COUNT(*) AS waiting_count FROM Registration
+            WHERE activity_id = ? AND status = 'waiting'
+            """,
+            (activity_id,),
+        ).fetchone()["waiting_count"]
+        position = waiting_count + 1
+
+        if existing_registration is not None:
+            connection.execute(
+                """
+                UPDATE Registration
+                SET status = 'waiting', queue_order = ?, registered_at = ?
+                WHERE id = ?
+                """,
+                (position, now, existing_registration["id"]),
+            )
+        else:
+            connection.execute(
+                """
+                INSERT INTO Registration (student_id, activity_id, status, queue_order, registered_at)
+                VALUES (?, ?, 'waiting', ?, ?)
+                """,
+                (session["user_id"], activity_id, position, now),
+            )
+        flash(f"活动名额已满，你已进入候补队列，当前候补位置第 {position} 位。", "success")
+        return redirect(url_for("activity_detail", activity_id=activity_id))
+
+
+@app.post("/activities/<int:activity_id>/cancel")
+def cancel_registration(activity_id):
+    response = student_required()
+    if response is not None:
+        return response
+
+    with get_connection(app.config["DATABASE"]) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        registration = connection.execute(
+            "SELECT id, status FROM Registration WHERE student_id = ? AND activity_id = ?",
+            (session["user_id"], activity_id),
+        ).fetchone()
+        if registration is None or registration["status"] != "confirmed":
+            flash("只有已确认参加的报名可以取消。", "error")
             return redirect(url_for("activity_detail", activity_id=activity_id))
 
         connection.execute(
-            """
-            INSERT INTO Registration (student_id, activity_id, status, registered_at)
-            VALUES (?, ?, 'active', ?)
-            """,
-            (session["user_id"], activity_id, datetime.now().isoformat(timespec="seconds")),
+            "UPDATE Registration SET status = 'cancelled', queue_order = 0 WHERE id = ?",
+            (registration["id"],),
         )
+        promoted_student_id = _promote_first_waiting(connection, activity_id)
 
-    flash("报名成功！", "success")
+    if promoted_student_id is None:
+        flash("已取消报名，名额已释放。", "success")
+    else:
+        flash("已取消报名，候补队列首位学生已自动递补为已确认。", "success")
     return redirect(url_for("activity_detail", activity_id=activity_id))
+
+
+@app.post("/activities/<int:activity_id>/waitlist/leave")
+def leave_waitlist(activity_id):
+    response = student_required()
+    if response is not None:
+        return response
+
+    with get_connection(app.config["DATABASE"]) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        registration = connection.execute(
+            "SELECT id, status FROM Registration WHERE student_id = ? AND activity_id = ?",
+            (session["user_id"], activity_id),
+        ).fetchone()
+        if registration is None or registration["status"] != "waiting":
+            flash("你当前不在该活动的候补队列中。", "error")
+            return redirect(url_for("activity_detail", activity_id=activity_id))
+
+        connection.execute(
+            "UPDATE Registration SET status = 'cancelled', queue_order = 0 WHERE id = ?",
+            (registration["id"],),
+        )
+        _renumber_waitlist(connection, activity_id)
+
+    flash("已退出候补队列，后续候补学生顺序已自动前移。", "success")
+    return redirect(url_for("activity_detail", activity_id=activity_id))
+
+
+@app.get("/my/registrations")
+def my_registrations():
+    response = login_required()
+    if response is not None:
+        return response
+
+    with get_connection(app.config["DATABASE"]) as connection:
+        rows = connection.execute(
+            """
+            SELECT Registration.status, Registration.queue_order, Registration.registered_at,
+                   Activity.id AS activity_id, Activity.title, Activity.end_time,
+                   Activity.max_participants
+            FROM Registration
+            JOIN Activity ON Activity.id = Registration.activity_id
+            WHERE Registration.student_id = ? AND Registration.status != 'cancelled'
+            ORDER BY Registration.registered_at DESC
+            """,
+            (session["user_id"],),
+        ).fetchall()
+
+    registrations = []
+    for row in rows:
+        item = dict(row)
+        item["status_label"] = REGISTRATION_STATUS_LABELS.get(item["status"], item["status"])
+        registrations.append(item)
+    return render_template("my_registrations.html", registrations=registrations)
+
+
+@app.get("/admin/activities")
+def admin_activities():
+    response = admin_required()
+    if response is not None:
+        return response
+
+    with get_connection(app.config["DATABASE"]) as connection:
+        rows = connection.execute(
+            """
+            SELECT Activity.*, User.username AS organizer_name,
+                   COUNT(CASE WHEN Registration.status = 'confirmed' THEN Registration.id END)
+                       AS registration_count,
+                   COUNT(CASE WHEN Registration.status = 'waiting' THEN Registration.id END)
+                       AS waiting_count
+            FROM Activity
+            JOIN User ON User.id = Activity.organizer_id
+            LEFT JOIN Registration ON Registration.activity_id = Activity.id
+            GROUP BY Activity.id
+            ORDER BY Activity.id DESC
+            """
+        ).fetchall()
+    activities = [activity_with_display_status(row) for row in rows]
+    return render_template("admin_activities.html", activities=activities)
+
+
+@app.get("/admin/users")
+def admin_users():
+    response = admin_required()
+    if response is not None:
+        return response
+
+    with get_connection(app.config["DATABASE"]) as connection:
+        rows = connection.execute(
+            """
+            SELECT User.id, User.username, User.role, User.account_status,
+                   (SELECT COUNT(*) FROM Activity WHERE Activity.organizer_id = User.id)
+                       AS activity_count,
+                   (SELECT COUNT(*) FROM Registration
+                    WHERE Registration.student_id = User.id
+                      AND Registration.status IN ('confirmed', 'waiting'))
+                       AS registration_count
+            FROM User
+            ORDER BY User.id ASC
+            """
+        ).fetchall()
+
+    role_labels = {"student": "学生", "teacher": "活动组织教师", "admin": "系统管理员"}
+    users = []
+    for row in rows:
+        item = dict(row)
+        item["role_label"] = role_labels.get(item["role"], item["role"])
+        users.append(item)
+    return render_template("admin_users.html", users=users)
 
 
 if __name__ == "__main__":
